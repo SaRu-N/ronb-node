@@ -156,7 +156,7 @@ export class News {
   @OneToMany(() => NewsComment, (comment) => comment.news, {
     nullable: true,
   })
-  comments?: Comment[];
+  comments?: NewsComment[];
 
   @Field(() => UserLikesNews, {
     description: 'React of user to the news',

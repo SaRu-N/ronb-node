@@ -134,3 +134,5 @@ dist
 uploads/
 buploads/
 firebase.json
+
+db.sqlite3

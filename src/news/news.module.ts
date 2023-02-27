@@ -23,8 +23,11 @@ import {
   UserLikesNews,
   UserNewsEngagement,
 } from './entities/news.entity';
+import {Profile as userProfile} from 'src/users/entitiy/users.entity';
 import { TagsModule } from 'src/tags/tags.module';
 import { FilesService } from 'src/common/services/files.service';
+import { NewsComment } from 'src/comments/entities/comment.entity';
+import{Tag} from 'src/tags/entities/tag.entity'
 
 @Module({
   providers: [
@@ -50,6 +53,9 @@ import { FilesService } from 'src/common/services/files.service';
       UserLikesNews,
       UserNewsEngagement,
       UserInterests,
+      userProfile,
+      NewsComment,
+      Tag
     ]),
   ],
   exports: [NewsService],

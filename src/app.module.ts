@@ -85,7 +85,7 @@ import { ReviewsModule } from './reviews/reviews.module';
         return {
           type: 'sqlite',
           database:
-            '/home/calcgen2/prokura_workspace/ronb_ws/ronb-django/db.sqlite3',
+            '/home/saru/Documents/NewsRecommend/ronb-node/db.sqlite3',
           name: 'usersConnection',
         };
       })(),

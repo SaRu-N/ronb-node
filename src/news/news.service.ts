@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource,Repository, Like, getRepository } from 'typeorm';
 import {
   CreateNewsCategoryInput,
   CreateNewsInput,
@@ -21,12 +21,16 @@ import {
   RecommendationData,
   UserInterests,
   UserLikesNews,
+  UserNewsEngagement,
 } from './entities/news.entity';
 import { uploadFileStream } from 'src/common/utils/upload';
 import { NewsTaggit, Tag } from 'src/tags/entities/tag.entity';
 import { NewsTaggitService, TagsService } from 'src/tags/tags.service';
 import { join } from 'path';
 import { FilesService } from 'src/common/services/files.service';
+import { createObjectCsvWriter } from 'csv-writer';
+import { Profile } from 'src/users/entitiy/users.entity';
+import { NewsComment } from 'src/comments/entities/comment.entity';
 
 @Injectable()
 export class NewsService {
@@ -538,6 +542,15 @@ export class RecommendationDataService {
     private newsRepository: Repository<News>,
     @InjectRepository(UserInterests)
     private userInterestsRepository: Repository<UserInterests>,
+    @InjectRepository(NewsCategory)
+    private newsCategoryRepository: Repository<NewsCategory>,
+    @InjectRepository(UserNewsEngagement)
+    private userNewsEngagementsRepository: Repository<UserNewsEngagement>,
+    @InjectRepository(UserLikesNews)
+    private userLikesNewsRepository: Repository<UserLikesNews>,
+    @InjectRepository(Tag)
+    private tagRepository: Repository<Tag>,
+
   ) {}
 
   async getRecommendationData(): Promise<RecommendationData> {
@@ -546,6 +559,186 @@ export class RecommendationDataService {
     //   where: { category: In(userInterestsIds) },
     //   relations: ['category', 'images'],
     // });
+
+    // saving user likes data
+    const userlikes = await this.userLikesNewsRepository.find({
+      order: {
+        userId: "ASC",
+    },
+    });
+    const likesWriter = createObjectCsvWriter({
+      path: '/home/saru/Documents/NewsRecommend/likes.csv',
+      header: [
+        {id: 'user', title: 'User'},
+        {id:'news',title:'News'},
+      ]
+    });
+    const likesData = userlikes.map((likesItem) => {
+      return {
+        user: likesItem.userId,
+        news: likesItem.newsId
+      };
+    });
+
+    likesWriter.writeRecords(likesData)
+      .then(() => console.log('CSV file for Likes written successfully'))
+      .catch((error) => console.log('Error writing Likes CSV file', error));
+
+    // saving news data
+    const news = await this.newsRepository.find({
+      relations: ['category','tags','likes','comments'],
+      order: {
+        id: "ASC",
+    },
+    });
+    const newsWriter = createObjectCsvWriter({
+      path: '/home/saru/Documents/NewsRecommend/news.csv',
+      header: [
+        {id: 'id', title: 'Id'},
+        {id: 'title', title: 'Title'},
+        {id: 'content', title: 'Content'},
+        {id: 'category', title: 'Category'},
+        {id: 'tags', title:'Tags'},
+        {id:'likes',title:'Likes'},
+        {id: 'comments',title:'Comments'}
+      ]
+    });
+    const newsData = news.map((newsItem) => {
+      return {
+        id: newsItem.id,
+        title: newsItem.title,
+        content: newsItem.content,
+        category: newsItem.category ? newsItem.category.id : null,
+        tags: newsItem.tags.map((tag) => tag.id).join(','),
+        likes: newsItem.likes.length,
+        comments:newsItem.comments.length
+      };
+    });
+
+    newsWriter.writeRecords(newsData)
+    .then(() => console.log('CSV file for news written successfully'))
+    .catch((error) => console.log('Error writing News CSV file', error));
+
+    // saving rating data
+    const ratingWriter = createObjectCsvWriter({
+      path: '/home/saru/Documents/NewsRecommend/ratings.csv',
+      header: [
+        {id:'newsId',title:'News'},
+        {id: 'userId', title: 'User'},
+        {id: 'likeCount', title: 'Like'},
+        {id: 'commentCount', title:'Comment'}
+      ]
+    });
+    let ratingDataAll = [];
+    news.forEach(n => {
+    let ratingDict = {}
+      n.likes.forEach(like => {
+        ratingDict[like.userId] = {
+          newsId: n.id,
+          userId: like.userId,
+          likeCount: 1,
+          commentCount: 0,
+        }
+      });
+
+      n.comments.forEach(comment => {
+        if (comment.author in ratingDict){
+          ratingDict[comment.author].commentCount+=1
+        } else{
+          ratingDict[comment.author] = {
+            newsId: n.id,
+            userId: comment.author,
+            likeCount: 0,
+            commentCount: 1,
+          }
+        }
+        // console.log(ratingDict)
+      });
+      const ratingData = Object.values(ratingDict);
+    ratingDataAll = ratingDataAll.concat(ratingData);
+    }
+  );
+  ratingWriter.writeRecords(ratingDataAll)
+  .then(() => console.log('CSV file for rating written successfully'))
+  .catch((error) => console.log('Error writing rating CSV file', error));
+    
+
+    // saving user Interest data
+    const userInterests = await this.userInterestsRepository.find({
+      relations: ['newsTags','newsCategories'],
+      order: {
+        userId: "ASC",
+    },
+    });
+    const userInterestWriter = createObjectCsvWriter({
+      path: '/home/saru/Documents/NewsRecommend/userInterest.csv',
+      header: [
+        {id: 'userId', title: 'User'},
+        {id: 'tags', title: 'Tags'},
+        {id: 'category', title: 'Category'},
+      ]
+    });
+    const userInterestData = userInterests.map((interestItem) => {
+      return {
+        userId: interestItem.userId,
+        tags: interestItem.newsTags.map((tag) => tag.id).join(','),
+        category: interestItem.newsCategories.map((category)=>category.id).join(','),
+      };
+    });
+    userInterestWriter.writeRecords(userInterestData)
+      .then(() => console.log('CSV file for userInterest written successfully'))
+      .catch((error) => console.log('Error writing user Interest CSV file', error));
+    
+    // saving Category data
+    const categories = await this.newsCategoryRepository.find({
+      relations: ['news','userInterests'],
+      order: {
+        id: "ASC",
+    },
+    });
+    const categoryWriter = createObjectCsvWriter({
+      path: '/home/saru/Documents/NewsRecommend/categories.csv',
+      header: [
+        {id: 'id', title: 'Id'},
+        {id: 'category', title: 'Category'},
+        {id: 'news', title: 'News'},
+      ]
+    });
+    const categoryData = categories.map((categoryItem) => {
+      return {
+        id: categoryItem.id,
+        category:categoryItem.name,
+        news: categoryItem.news.map((news) => news.id).join(','),
+      };
+    });
+    categoryWriter.writeRecords(categoryData)
+      .then(() => console.log('CSV file for category written successfully'))
+      .catch((error) => console.log('Error writing category CSV file', error));
+    
+    // saving tag data
+    const tags = await this.tagRepository.find({
+      // relations: ['news','tag'],
+      order: {
+        id: "ASC",
+    },
+    });
+    const tagsWriter = createObjectCsvWriter({
+      path: '/home/saru/Documents/NewsRecommend/tags.csv',
+      header: [
+        {id: 'id', title: 'Id'},
+        {id: 'tag', title: 'Tag'},
+      ]
+    });
+    const tagData = tags.map((tagItem) => {
+      return {
+        id: tagItem.id,
+        tag: tagItem.name,
+      };
+    });
+    tagsWriter.writeRecords(tagData)
+      .then(() => console.log('CSV file for tag written successfully'))
+      .catch((error) => console.log('Error writing Tag CSV file', error));
+
     const recommendationData: RecommendationData = {
       userData: 'user data',
       newsData: 'news data',
